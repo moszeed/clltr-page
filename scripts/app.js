@@ -38,9 +38,14 @@ require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof requ
             var parser      = document.createElement('a');
                 parser.href = document.URL;
 
+            var port = parser.port;
+            if (port !== '') {
+                port += ":" + port;
+            }
+
+
             return  parser.protocol + "//" +
-                    parser.hostname + ":" +
-                    parser.port;
+                    parser.hostname + port;
         };
 
         Helper.timeConverter = function(timestamp) {
