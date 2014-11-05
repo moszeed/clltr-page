@@ -40,12 +40,12 @@ require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof requ
 
             var port = parser.port;
             if (port !== '') {
-                port += ":" + port;
+                port = ":" + port;
             }
 	    
 	    var pathname = parser.pathname;
 	    if (pathname !== '') {
-	    	pathname += "/" + pathname;
+	    	pathname = "/" + pathname;
 	    } 
 
             return  parser.protocol + "//" +
