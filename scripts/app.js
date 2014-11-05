@@ -42,10 +42,14 @@ require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof requ
             if (port !== '') {
                 port += ":" + port;
             }
-
+	    
+	    var pathname = parser.pathname;
+	    if (pathname !== '') {
+	    	pathname += "/" + pathname;
+	    } 
 
             return  parser.protocol + "//" +
-                    parser.hostname + port;
+                    parser.hostname + port + pathname;
         };
 
         Helper.timeConverter = function(timestamp) {
