@@ -49,7 +49,7 @@ require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof requ
 	    } 
 
             return  parser.protocol + "//" +
-                    parser.hostname + port + pathname;
+                    parser.hostname + port + parser.pathname;
         };
 
         Helper.timeConverter = function(timestamp) {
