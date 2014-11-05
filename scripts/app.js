@@ -10,6 +10,7 @@ require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof requ
         Backbone.$      = $;
 
     var Router          = require('./modules/router.module.js').init();
+        Router.httpsCheck();
 
     var App = module.exports;
 
@@ -42,15 +43,16 @@ require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof requ
             if (port !== '') {
                 port = ":" + port;
             }
-	    
-	    var pathname = parser.pathname;
-	    if (pathname !== '') {
-	    	pathname = "/" + pathname;
-	    } 
+        
+            var pathname = parser.pathname;
+            if (pathname !== '') {
+                pathname = "/" + pathname;
+            } 
 
             return  parser.protocol + "//" +
                     parser.hostname + port + parser.pathname;
         };
+
 
         Helper.timeConverter = function(timestamp) {
 
@@ -236,6 +238,29 @@ require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof requ
                 '*path' : 'default'
             },
 
+            httpsCheck : function() {
+
+
+                var parser      = document.createElement('a');
+                    parser.href = document.URL;
+
+                if (parser.hostname === 'localhost') {
+                    return;
+                }
+
+                var port = parser.port;
+                if (port !== '') {
+                    port = ":" + port;
+                }
+
+                var host = parser.hostname + port;
+                if (host == window.location.host && 
+                    window.location.protocol != "https:") {
+                    window.location.protocol = "https";
+                }
+
+            },
+
             getCurrentPage  : function() {
                 return Backbone.history.fragment;
             },
@@ -352,13 +377,6 @@ require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof requ
             receiverUrl     : Helper.getCurrentUrl(),
             rememberUser    : true
         }));
-
-
-        //new Dropbox.AuthDriver.Popup({rememberUser:true, receiverUrl :"https://[MYCallbackURL]"})
-
-        //DropboxClient.authDriver(new Dropbox.AuthDriver.Redirect({
-        //    rememberUser    : true
-        //}));
 
 
     var User = module.exports;
