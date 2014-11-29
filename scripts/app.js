@@ -433,6 +433,10 @@ require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof requ
             localStorage.clear();
         };
 
+        User.loggedInUser = function() {
+
+        };
+
         User.login = function() {
 
             return when.promise(function(resolve, reject) {
@@ -445,8 +449,6 @@ require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof requ
                 });
             });
         };
-
-        //exports.DropboxClient = DropboxClient;
 })();
 
 },{"./helper.module.js":2,"dropbox":"tBYV3e","when":"My0/Wt"}],"./client/scripts/pages/impressum.page.js":[function(require,module,exports){
