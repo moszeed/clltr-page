@@ -476,9 +476,7 @@ module.exports=require('HZXAze');
 
 })();
 
-},{"backbone":"DIOwA5","jquery":"QRCzyp","underscore":"s12qeW"}],"./client/scripts/pages/libary.page.js":[function(require,module,exports){
-module.exports=require('+qxF5J');
-},{}],"+qxF5J":[function(require,module,exports){
+},{"backbone":"DIOwA5","jquery":"QRCzyp","underscore":"s12qeW"}],"+qxF5J":[function(require,module,exports){
 (function() {
 
     "use strict";
@@ -756,7 +754,7 @@ module.exports=require('+qxF5J');
             addItem     : function(model) {
 
                 var tagItem = new Libary.TagItem({model:model});
-                    tagItem.$el.appendTo(this.$el.find('.content'));
+                    tagItem.$el.appendTo(this.$el);
                     tagItem.render();
             },
 
@@ -765,7 +763,7 @@ module.exports=require('+qxF5J');
                 var that = this;
 
                     that.listenTo(that.collection, 'reset', function() {
-                        that.$el.find('.content').html('');
+                        that.$el.html('');
                     });
 
                     that.listenTo(that.collection, 'destroy', function() {
@@ -785,6 +783,8 @@ module.exports=require('+qxF5J');
                     that.collection.refresh();
             }
         });
+
+
 
         Libary.VideoListItem = Backbone.View.extend({
 
@@ -860,7 +860,7 @@ module.exports=require('+qxF5J');
             addItem     : function(model) {
 
                 var listItem = new Libary.VideoListItem({model:model});
-                    listItem.$el.prependTo(this.$el.find('.content'));
+                    listItem.$el.prependTo(this.$el);
                     listItem.render();
             }
         });
@@ -941,7 +941,7 @@ module.exports=require('+qxF5J');
             addItem     : function(model) {
 
                 var listItem = new Libary.ImageListItem({model:model});
-                    listItem.$el.prependTo(this.$el.find('.content'));
+                    listItem.$el.prependTo(this.$el);
                     listItem.render();
             }
         });
@@ -1026,7 +1026,7 @@ module.exports=require('+qxF5J');
             addItem     : function(model) {
 
                 var listItem = new Libary.LinkListItem({model:model});
-                    listItem.$el.prependTo(this.$el.find('.content'));
+                    listItem.$el.prependTo(this.$el);
                     listItem.render();
             }
         });
@@ -1056,14 +1056,10 @@ module.exports=require('+qxF5J');
                         }
                     });
 
-                    that.listenTo(that.collection, 'sync', function() {
-                        console.log('link_list: ' + that.vLinksList.$el.find('.list_item').length);
-                    });
-
                     that.listenTo(that.collection, 'reset', function() {
-                        that.vLinksList.$el.find('.content').html('');
-                        that.vImagesist.$el.find('.content').html('');
-                        that.vVideosList.$el.find('.content').html('');
+                        that.vLinksList.$el.html('');
+                        that.vImagesist.$el.html('');
+                        that.vVideosList.$el.html('');
                     });
 
                     that.collection.refresh();
@@ -1106,7 +1102,9 @@ module.exports=require('+qxF5J');
 
 })();
 
-},{"../modules/helper.module.js":2,"../modules/list.module.js":3,"../modules/tags.module.js":6,"../modules/user.module.js":7,"backbone":"DIOwA5","jquery":"QRCzyp","underscore":"s12qeW","when":"My0/Wt"}],"./client/scripts/pages/whatis.page.js":[function(require,module,exports){
+},{"../modules/helper.module.js":2,"../modules/list.module.js":3,"../modules/tags.module.js":6,"../modules/user.module.js":7,"backbone":"DIOwA5","jquery":"QRCzyp","underscore":"s12qeW","when":"My0/Wt"}],"./client/scripts/pages/libary.page.js":[function(require,module,exports){
+module.exports=require('+qxF5J');
+},{}],"./client/scripts/pages/whatis.page.js":[function(require,module,exports){
 module.exports=require('5UBb1x');
 },{}],"5UBb1x":[function(require,module,exports){
 (function() {
