@@ -992,6 +992,9 @@ module.exports=require('+qxF5J');
 
                     //save model
                     that.model.save();
+
+                    $('#widget').css('display', 'none');
+                    $('#widgetContent').html('');
                 },
 
                 'click #buttons .close' : function() {
