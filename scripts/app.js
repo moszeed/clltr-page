@@ -13,6 +13,7 @@
 
     var User   = require('./scripts/modules/user.module.js');
     var Router = require('./scripts/modules/router.module.js')();
+        Router.httpsCheck();
 
     var App = module.exports;
 
@@ -96,6 +97,27 @@
 
                         that.changePage(urlParams);
                     });
+            },
+
+            httpsCheck: function() {
+
+                var parser      = document.createElement('a');
+                    parser.href = document.URL;
+
+                if (parser.hostname === 'localhost') {
+                    return;
+                }
+
+                var port = parser.port;
+                if (port !== '') {
+                    port = ":" + port;
+                }
+
+                var host = parser.hostname + port;
+                if (host == window.location.host &&
+                    window.location.protocol != "https:") {
+                    window.location.protocol = "https";
+                }
             },
 
             changePage: function(page) {
