@@ -584,7 +584,7 @@
                 '?access_token=' + Backbone.DrbxJs.Client._oauth._token;
         }
 
-        return model.get('faviconUrl');
+        return model.get('faviconUrl') || './images/favicon.ico';
     }
 
     /**
@@ -630,10 +630,10 @@
         var rect = el.getBoundingClientRect();
 
         return (
-            rect.top >= -100 &&
-            rect.left >= 0 &&
-            rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-            rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+            rect.top >= -500 &&
+            rect.left >= -700 &&
+            rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) + 500 &&
+            rect.right <= (window.innerWidth || document.documentElement.clientWidth) + 700
         );
     }
 
@@ -876,15 +876,19 @@
 
             events: {
 
-                'click .name': function() {
-
+                'click .url' : function() {
                     var win = window.open(this.model.get('url'), '_blank');
                         win.focus();
                     return false;
                 },
 
-                'click .extend_me': function() {
+                'click .name': function() {
+                    var $extend = this.$el.find('.extend');
+                    var displayAction = ($extend.is(':visible')) ? 'none' : 'block';
+                    $extend.css('display', displayAction);
+                },
 
+                'click .extend_me': function() {
                     var $extend = this.$el.find('.extend');
                     var displayAction = ($extend.is(':visible')) ? 'none' : 'block';
                     $extend.css('display', displayAction);
