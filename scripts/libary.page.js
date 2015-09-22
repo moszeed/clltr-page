@@ -494,67 +494,12 @@
 
     "use strict";
 
-    var $             = require('jquery');
-    var Backbone      = require('backbone');
-        Backbone.View = require('backbone-template');
-
-    var Widget = module.exports;
-
-        Widget.Content = Backbone.View.extend({
-
-            id    : "widgetContent",
-            render: function(widget, params) {
-
-                params = params || {};
-                return new Promise(function(resolve) {
-                    this.template({
-                        path   : './templates/widgets/' + widget + '.widget.html',
-                        params : params,
-                        success: function() {
-                            resolve();
-                        }
-                    });
-                }.bind(this));
-            }
-        });
-
-        Widget.View = Backbone.View.extend({
-
-            id    : 'widget',
-            events: {
-                'click .close': function() {
-                    this.remove();
-                }
-            },
-
-            render: function(widget, params) {
-
-                $('#widget').remove();
-
-                this.vWidgetContent = new Widget.Content();
-                this.$el.html("<div id='widgetOverlay'></div>");
-                this.vWidgetContent.$el.appendTo(this.$el);
-                this.$el.css('display', 'block');
-                this.$el.appendTo('body');
-
-                return this.vWidgetContent.render(widget, params);
-            }
-        });
-
-})();
-
-},{"backbone":"backbone","backbone-template":"backbone-template","jquery":"jquery"}],5:[function(require,module,exports){
-(function() {
-
-    "use strict";
-
     var $        = require('jquery');
     var _        = require('underscore');
     var Backbone = require('drbx-js-backbone');
     var Helper   = require('helper');
 
     // get needed modules
-    var Widget = require('../modules/widget.module.js');
     var User   = require('../modules/user.module.js');
     var Lists  = require('../modules/lists.module.js');
     var Items  = require('../modules/items.module.js');
@@ -644,7 +589,6 @@
 
         /**
          *  Widgets
-         */
 
         Libary.EditLists = Widget.View.extend({
 
@@ -812,6 +756,280 @@
             }
         });
 
+        */
+
+
+        Libary.EditLists = Backbone.View.extend({
+
+            events: {
+
+                'change .listItem :input': function(el) {
+
+                    var $el = $(el.target);
+                    var $parent = $el.parent();
+
+                    var keyName = $el.attr('class');
+                    var listId = $parent.attr('class').split(' ')[1];
+
+                    var listModel = cLists.get(listId);
+                        listModel.set(keyName, $el.val());
+                        listModel.save();
+                },
+
+                'click .close': function() {
+                    $('#widget').remove();
+                },
+
+                'click #addListItem .addItem': function() {
+
+                    var $addListItem = this.$el.find('#addListItem');
+                    if ($addListItem.find('input').val() !== '') {
+
+                        cLists.add({
+                            name       : $addListItem.find('input').val(),
+                            description: $addListItem.find('textarea').val()
+                        });
+
+                        $addListItem.find(':input').val('');
+                        this.showLists();
+                    }
+
+                    cLists.save()
+                        .then(function() {
+                            this.showLists();
+                        }.bind(this));
+                },
+
+                'click .listItem .removeItem': function(el) {
+
+                    var $el = $(el.target);
+                    var $parent = $el.parent();
+
+                    var listId = $parent.attr('class').split(' ')[1];
+
+                    var mList = cLists.get(listId);
+                    if (mList.get('totalCount') !== 0) {
+                        alert('list not empty');
+                        return;
+                    }
+
+                    cLists.remove(listId);
+                    this.showLists();
+                }
+            },
+
+
+            buildWidget: function() {
+
+                // remove widget if already available
+                var $widget = $('#widget');
+                if ($widget.length === 1) {
+                    $widget.remove();
+                }
+
+                // create widget
+                $widget = $('<div id="widget"></div>');
+                $widget.css('display', 'block');
+                $widget.appendTo('body');
+
+                // create widget parts
+                var $widgetOverlay = $('<div id="widgetOverlay"></div>');
+                    $widgetOverlay.appendTo($widget);
+
+                var $widgetContent = $('<div id="widgetContent" class="editLists"></div>');
+                    $widgetContent.appendTo($widget);
+            },
+
+            initialize: function() {
+                this.buildWidget();
+                this.render();
+            },
+
+            showLists: function() {
+
+                var tpl = _.template("<div class='listItem <%= id%>'>" +
+                    "<input class='name' value='<%= name %>'>" +
+                    "<textarea class='description'><%= description%></textarea>" +
+                    "<button class='removeItem'>remove</button>" +
+                "</div>");
+
+                var listItems = [];
+                cLists.each(function(listModel) {
+                    listItems.push(tpl(listModel.pick('id', 'name', 'description')));
+                });
+
+                this.$el.find('#availableLists').html(listItems.join(''));
+            },
+
+            render: function() {
+                this.template({
+                    path   : './templates/widgets/editlists.widget.html',
+                    success: function() {
+                        $('#widgetContent').html(this.$el)
+                        this.showLists();
+                    }.bind(this)
+                });
+            }
+
+        });
+
+        Libary.EditItem = Backbone.View.extend({
+
+            events: {
+
+                'click .close': function() {
+                    $('#widget').remove();
+                },
+
+                'click .delete': function() {
+                    console.log('implement me');
+                },
+
+                'change input, textarea': function(el) {
+
+                    var name  = $(el.target).attr('class');
+                    var value = $(el.target).val();
+
+                    this.model.set(name, value);
+                    this.model.save();
+                },
+
+                'change .list_data select': function(el) {
+
+                    var $option = $(el.target).find(':selected');
+                    var listId = $option.attr('id');
+                    if (!listId) {
+                        throw new Error('no listId');
+                    }
+
+                    this.model.save({
+                        'listId': [listId]
+                    });
+                }
+            },
+
+            loadUrl: function(url, saveContent) {
+
+                cItems.addAndGetData({ url: url }, { saveContent: saveContent || true })
+                    .then(function(model) {
+                        this.model = model;
+                    }.bind(this))
+                    .then(this.refresh)
+                    .then(cItems.save)
+                    .catch(function(err) {
+                        console.log(err);
+                    });
+            },
+
+            refresh: function() {
+
+                if (!this.model) {
+                    throw new Error('no model given');
+                }
+
+                this.buildWidget();
+                this.render();
+            },
+
+            initialize: function() {
+                _.bindAll(this, 'loadUrl', 'refresh', 'buildWidget', 'render');
+            },
+
+            buildWidget: function() {
+
+                // remove widget if already available
+                var $widget = $('#widget');
+                if ($widget.length === 1) {
+                    $widget.remove();
+                }
+
+                // create widget
+                $widget = $('<div id="widget"></div>');
+                $widget.css('display', 'block');
+                $widget.appendTo('body');
+
+                // create widget parts
+                var $widgetOverlay = $('<div id="widgetOverlay"></div>');
+                    $widgetOverlay.appendTo($widget);
+
+                var $widgetContent = $('<div id="widgetContent" class="editItem"></div>');
+                    $widgetContent.appendTo($widget);
+            },
+
+            render: function() {
+
+                this.template({
+                    path  : './templates/widgets/edititem.widget.html',
+                    params: {
+                        lists     : cLists.toJSON(),
+                        attributes: _.extend(this.model.toJSON(), {
+                            'faviconUrl': getFaviconUrl(this.model)
+                        })
+                    },
+                    success: function() {
+                        $('#widgetContent').html(this.$el)
+                    }.bind(this)
+                });
+            }
+        });
+
+        Libary.DeleteItem = Backbone.View.extend({
+
+            events: {
+
+                'click .close': function() {
+                    $('#widget').remove();
+                },
+
+                'click .delete': function() {
+
+                    var collection = this.model.collection;
+                    this.model.destroy();
+                    collection.save();
+                    $('#widget').remove();
+                }
+            },
+
+            buildWidget: function() {
+
+                // remove widget if already available
+                var $widget = $('#widget');
+                if ($widget.length === 1) {
+                    $widget.remove();
+                }
+
+                // create widget
+                $widget = $('<div id="widget"></div>');
+                $widget.css('display', 'block');
+                $widget.appendTo('body');
+
+                // create widget parts
+                var $widgetOverlay = $('<div id="widgetOverlay"></div>');
+                    $widgetOverlay.appendTo($widget);
+
+                var $widgetContent = $('<div id="widgetContent" class="deleteItem"></div>');
+                    $widgetContent.appendTo($widget);
+            },
+
+            initialize: function() {
+                this.buildWidget();
+                this.render();
+            },
+
+            render: function() {
+                this.template({
+                    path   : './templates/widgets/deleteitem.widget.html',
+                    success: function() {
+                        $('#widgetContent').html(this.$el)
+                    }.bind(this)
+                });
+            }
+        });
+
+
+
+
+
 
         /**
          * Page Items
@@ -876,7 +1094,7 @@
 
             events: {
 
-                'click .url' : function() {
+                'click .url': function() {
                     var win = window.open(this.model.get('url'), '_blank');
                         win.focus();
                     return false;
@@ -1317,5 +1535,5 @@
         Libary.current = new Libary.View();
 })();
 
-},{"../modules/items.module.js":1,"../modules/lists.module.js":2,"../modules/user.module.js":3,"../modules/widget.module.js":4,"drbx-js-backbone":"drbx-js-backbone","helper":"helper","jquery":"jquery","underscore":"underscore"}]},{},[5])(5)
+},{"../modules/items.module.js":1,"../modules/lists.module.js":2,"../modules/user.module.js":3,"drbx-js-backbone":"drbx-js-backbone","helper":"helper","jquery":"jquery","underscore":"underscore"}]},{},[4])(4)
 });
