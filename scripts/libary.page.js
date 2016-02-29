@@ -154,7 +154,8 @@
             setImageToCache: function(params) {
 
                 var that = this;
-                if (params.type !== 'image') {
+                if (params.type !== 'image' &&
+                    params.type !== 'video') {
                     return Promise.resolve(params);
                 }
 
@@ -174,7 +175,7 @@
             setPreviewImageToCache: function(params) {
 
                 //add preview image to cache
-                if (params.type !== 'video' &&
+                if (params.type !== 'video' ||
                     !params.previewImageUrl) {
                     return Promise.resolve(params);
                 }
@@ -227,6 +228,7 @@
                         if (pageData.images.length !== 0) {
                             params.previewImageUrl = pageData.images[0].url;
                         }
+
                     }
 
                     if (pageData.media.type === 'photo') {
@@ -317,8 +319,15 @@
             url  : 'items',
             model: Items.Model,
 
+            revision: null,
+
             initialize: function() {
-                _.bindAll(this, 'save');
+
+                _.bindAll(this, 'save', 'cachedFetch');
+
+                this.listenTo(this, 'sync', function() {
+                    this.saveToStorage();
+                }.bind(this));
             },
 
             addAndGetData: function(params, opts) {
@@ -342,6 +351,47 @@
                         }
                     }
                 ));
+            },
+
+            cachedFetch: function(opts) {
+
+                // get the dropbox user id
+                var uid = Backbone.DrbxJs.Client._credentials.uid;
+
+                // get storage data
+                var storageData = this.getFromStorage();
+                if (storageData && storageData.user === uid &&
+                    storageData.revision === this.revision) {
+                    this.add(storageData.data, opts);
+                    return Promise.resolve();
+                }
+
+                return this.fetch(opts)
+                    .catch(function(err) {
+                        new Error(err);
+                    });
+            },
+
+            getFromStorage: function() {
+
+                var clltrStorageItems = localStorage.getItem('clltr_storage_items');
+                if (clltrStorageItems) {
+                    clltrStorageItems = JSON.parse(clltrStorageItems);
+                }
+
+                return clltrStorageItems;
+            },
+
+            saveToStorage: function() {
+
+                var uid = Backbone.DrbxJs.Client._credentials.uid;
+
+                // save to storage
+                localStorage.setItem('clltr_storage_items', JSON.stringify({
+                    user    : uid,
+                    revision: this.revision,
+                    data    : _.map(this.models, function(model) { return model.toJSON(); })
+                }));
             },
 
             save: function() {
@@ -378,6 +428,7 @@
                 id         : null,
                 name       : null,
                 description: null,
+                position   : null,
                 totalCount : 0
             },
 
@@ -405,12 +456,60 @@
             url  : 'lists',
             model: Lists.Model,
 
+            revision: null,
+
             comparator: function(model) {
-                return model.get('name');
+                return -model.get("position");
             },
 
             initialize: function() {
-                _.bindAll(this, 'save');
+
+                _.bindAll(this, 'save', 'cachedFetch');
+
+                this.listenTo(this, 'sync', function() {
+                    this.saveToStorage();
+                }.bind(this));
+            },
+
+            cachedFetch: function(opts) {
+
+                // get the dropbox user id
+                var uid = Backbone.DrbxJs.Client._credentials.uid;
+
+                // get storage data
+                var storageData = this.getFromStorage();
+                if (storageData && storageData.user === uid &&
+                    storageData.revision === this.revision) {
+                    this.add(storageData.data, opts);
+                    return Promise.resolve();
+                }
+
+                return this.fetch(opts)
+                    .catch(function(err) {
+                        new Error(err);
+                    });
+            },
+
+            getFromStorage: function() {
+
+                var clltrStorageLists = localStorage.getItem('clltr_storage_lists');
+                if (clltrStorageLists) {
+                    clltrStorageLists = JSON.parse(clltrStorageLists);
+                }
+
+                return clltrStorageLists;
+            },
+
+            saveToStorage: function() {
+
+                var uid = Backbone.DrbxJs.Client._credentials.uid;
+
+                // save to storage
+                localStorage.setItem('clltr_storage_lists', JSON.stringify({
+                    user    : uid,
+                    revision: this.revision,
+                    data    : _.map(this.models, function(model) { return model.toJSON(); })
+                }));
             },
 
             save: function() {
@@ -427,7 +526,6 @@
                 return responsePromise;
             }
         });
-
 
 })();
 
@@ -508,8 +606,14 @@
     var cItems = new Items.Collection();
     var cLists = new Lists.Collection();
 
+    // preload templates
+    Backbone.View.preLoadTemplates([
+        './templates/pages/libary/libary.list.html'
+    ])
+
     // API Urls
-    var ApiGetFileUrl = Backbone.DrbxJs.Client._urls.getFile + "/";
+    var ApiGetFileUrl   = Backbone.DrbxJs.Client._urls.getFile + "/";
+    var ApiGetThumbnail = Backbone.DrbxJs.Client._urls.thumbnails + "/";
 
     // check if allowed to view this page
     if (!User.isLoggedIn()) {
@@ -518,15 +622,42 @@
 
 
     /**
+     * [getDeltaData description]
+     * @return {[type]} [description]
+     */
+    function getDeltaData() {
+
+        return Backbone.DrbxJs.delta();
+    }
+
+    /**
+     * [getVideoUrl description]
+     * @param  {[type]} model     [description]
+     * @param  {[type]} thumbnail [description]
+     * @return {[type]}           [description]
+     */
+    function getDropboxFileApiUrl(filename, thumbnail) {
+
+        var drbxFilePath       = ApiGetFileUrl;
+        var drbxFilePathParams = '?access_token=' + Backbone.DrbxJs.Client._oauth._token;
+
+        return drbxFilePath + filename + drbxFilePathParams;
+    }
+
+    /**
      * [getFaviconUrl description]
      * @param  {[type]} model [description]
      * @return {[type]}       [description]
      */
     function getFaviconUrl(model) {
 
+        var drbxFilePath       = ApiGetFileUrl;
+        var drbxFilePathParams = '?access_token=' + Backbone.DrbxJs.Client._oauth._token;
+
         if (model.get('faviconUrlCache')) {
-            return ApiGetFileUrl + Backbone.DrbxJs.Client._urlEncodePath(model.get('faviconUrlCache')) +
-                '?access_token=' + Backbone.DrbxJs.Client._oauth._token;
+            return  drbxFilePath +
+                    Backbone.DrbxJs.Client._urlEncodePath(model.get('faviconUrlCache')) +
+                    drbxFilePathParams;
         }
 
         return model.get('faviconUrl') || './images/favicon.ico';
@@ -537,27 +668,47 @@
      * @param  {[type]} model [description]
      * @return {[type]}       [description]
      */
-    function getImageUrl(model) {
+    function getImageUrl(model, thumbnail) {
 
+        var drbxFilePath       = ApiGetFileUrl;
+        var drbxFilePathParams = '?access_token=' + Backbone.DrbxJs.Client._oauth._token;
+
+        var fileName = model.get('url');
+
+        // handle images
         if (model.get('type') === 'image') {
             if (model.get('urlCache')) {
-                return ApiGetFileUrl + Backbone.DrbxJs.Client._urlEncodePath(model.get('urlCache')) +
-                    '?access_token=' + Backbone.DrbxJs.Client._oauth._token;
+                fileName = model.get('urlCache');
             }
-
-            return model.get('url');
         }
 
+        // handle videos
         if (model.get('type') === 'video') {
 
-            if (model.get('previewImageUrlCache')) {
-                return ApiGetFileUrl + Backbone.DrbxJs.Client._urlEncodePath(model.get('previewImageUrlCache')) +
-                    '?access_token=' + Backbone.DrbxJs.Client._oauth._token;
+            if (model.get('urlCache')) {
+                fileName = model.get('urlCache');
             }
 
-            return model.get('previewImageUrl');
+            if (model.get('previewImageUrl')) {
+                 fileName = model.get('previewImageUrl');
+            }
+
+            if (model.get('previewImageUrlCache')) {
+                fileName = model.get('previewImageUrlCache')
+            }
         }
+
+        // currently partly disabled, dropbox has problems with files without .file-type
+        if (thumbnail) {
+            if (Helper.getFileTypeFromPath(fileName)) {
+                drbxFilePath       = ApiGetThumbnail;
+                drbxFilePathParams += '&size=l';
+            }
+        }
+
+        return  drbxFilePath + fileName + drbxFilePathParams;
     }
+
 
 
     /**
@@ -572,472 +723,184 @@
             el = el[0];
         }
 
-        var rect = el.getBoundingClientRect();
+        var r, html;
+        if ( !el || 1 !== el.nodeType ) { return false; }
+        html = document.documentElement;
+        r = el.getBoundingClientRect();
 
-        return (
-            rect.top >= -500 &&
-            rect.left >= -700 &&
-            rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) + 500 &&
-            rect.right <= (window.innerWidth || document.documentElement.clientWidth) + 700
+        return ( !!r
+          && r.bottom >= 200
+          && r.right >= 100
+          && r.top <= html.clientHeight + 200
+          && r.left <= html.clientWidth
         );
     }
 
+    /**
+     * [doBounce description]
+     * @param  {[type]} element  [description]
+     * @param  {[type]} times    [description]
+     * @param  {[type]} distance [description]
+     * @param  {[type]} speed    [description]
+     * @return {[type]}          [description]
+     */
+    function doBounce(element, times, distance, speed) {
 
+        for(var i = 0; i < times; i++) {
+            element.animate({marginTop: '-='+distance}, speed)
+                .animate({marginTop: '+='+distance}, speed);
+        }
+    }
 
-    var Libary = {};
-        Libary.Events = _.extend({}, Backbone.Events);
+    /**
+     * [saveUrl description]
+     * @param  {[type]} url         [description]
+     * @param  {[type]} listId      [description]
+     * @param  {[type]} saveContent [description]
+     * @return {[type]}             [description]
+     */
+    function saveUrl(url, listId, saveContent) {
 
-        /**
-         *  Widgets
+        if (!url) throw new Error('no url given');
+        if (!listId) throw new Error('no listId given');
 
-        Libary.EditLists = Widget.View.extend({
+        var itemParams = {
+            url   : url,
+            listId: [listId]
+        };
 
-            events: {
+        var itemOpts = {
+            saveContent: saveContent || true
+        };
 
-                'change .listItem :input': function(el) {
+        return cItems.addAndGetData(itemParams, itemOpts)
+            .then(function(model) {
+                return model.save();
+            })
+            .catch(function(err) {
+                console.log(err);
+            });
+    }
 
-                    var $el = $(el.target);
-                    var $parent = $el.parent();
+    //
+    // Item Editor/Detail
+    //
 
-                    var keyName = $el.attr('class');
-                    var listId = $parent.attr('class').split(' ')[1];
+    var ItemEditor = {};
+        ItemEditor.current = null;
 
-                    var listModel = cLists.get(listId);
-                        listModel.set(keyName, $el.val());
-                        listModel.save();
-                },
+        ItemEditor.View = Backbone.View.extend({
 
-                'click .close': function() {
-                    this.remove();
-                },
-
-                'click #addListItem .addItem': function() {
-
-                    var $addListItem = this.$el.find('#addListItem');
-                    if ($addListItem.find('input').val() !== '') {
-
-                        cLists.add({
-                            name       : $addListItem.find('input').val(),
-                            description: $addListItem.find('textarea').val()
-                        });
-
-                        $addListItem.find(':input').val('');
-                        this.showLists();
-                    }
-
-                    cLists.save()
-                        .then(function() {
-                            this.showLists();
-                        }.bind(this));
-                },
-
-                'click .listItem .removeItem': function(el) {
-
-                    var $el = $(el.target);
-                    var $parent = $el.parent();
-
-                    var listId = $parent.attr('class').split(' ')[1];
-
-                    var mList = cLists.get(listId);
-                    if (mList.get('totalCount') !== 0) {
-                        alert('list not empty');
-                        return;
-                    }
-
-                    cLists.remove(listId);
-                    this.showLists();
-                }
-            },
-
-            showLists: function() {
-
-                var tpl = _.template("<div class='listItem <%= id%>'>" +
-                    "<input class='name' value='<%= name %>'>" +
-                    "<textarea class='description'><%= description%></textarea>" +
-                    "<button class='removeItem'>remove</button>" +
-                "</div>");
-
-                var listItems = [];
-                cLists.each(function(listModel) {
-                    listItems.push(tpl(listModel.pick('id', 'name', 'description')));
-                });
-
-                this.$el.find('#availableLists').html(listItems.join(''));
-            },
-
-            initialize: function() {
-
-                _.bindAll(this, 'showLists');
-
-                this.render('editlists')
-                    .then(this.showLists);
-            }
-        });
-
-        Libary.EditItem = Widget.View.extend({
+            className: 'item_editor hidden',
 
             events: {
 
-                'click .close': function() {
-                    this.remove();
+                'click a': function(el) {
+                    el.preventDefault();
                 },
 
-                'click .delete': function() {
-                    this.remove();
+                'click .edit_icon'            : 'activateEditMode',
+                'click label[for="edit_icon"]': 'activateEditMode',
+
+                'click a.remove': function() {
+                    cItems.get(this.itemId).destroy();
                 },
 
-                'change .list_data select': function(el) {
+                'keyup :input': _.debounce(function(el) {
 
-                    var $option = $(el.target).find(':selected');
-                    var listId = $option.attr('id');
-                    if (!listId) {
-                        throw new Error('no listId');
-                    }
+                    var $target = $(el.target);
+                    var $parent = $target.parent();
 
-                    this.model.save({
-                        'listId': [listId]
-                    });
-                }
+                    var model = cItems.get(this.itemId);
+                    var key   = $parent.attr('class').split(' ')[1];
+
+                    model.set(key, $target.val().trim());
+                    model.save();
+
+                }, 300)
             },
 
-            loadUrl: function(url, saveContent) {
+            activateEditMode: function() {
 
-                cItems.addAndGetData({ url: url }, {
-                        saveContent: saveContent || true
-                    })
-                    .then(function(model) {
-                        this.model = model;
-                    }.bind(this))
-                    .then(this.refresh)
-                    .then(cItems.save)
-                    .catch(function(err) {
-                        console.log(err);
-                    });
-            },
-
-            refresh: function() {
-
-                if (!this.model) {
-                    throw new Error('no model given');
+                var $a = this.$el.find('a');
+                var $disabledItems = this.$el.find(':disabled');
+                if ($disabledItems.length === 0) {
+                    this.$el.find(':input').attr('disabled', true);
+                    $a.css('display', 'none');
+                    return;
                 }
 
-                this.render('edititem', {
-                    lists     : cLists.toJSON(),
-                    attributes: _.extend(this.model.toJSON(), {
-                        'faviconUrl': getFaviconUrl(this.model)
-                    })
-                });
+                $a.css('display', 'block');
+                $disabledItems.removeAttr('disabled');
             },
+
 
             initialize: function() {
-                _.bindAll(this, 'loadUrl', 'refresh');
-            }
-        });
 
-        Libary.DeleteItem = Widget.View.extend({
-
-            events: {
-
-                'click .close': function() {
-                    this.remove();
-                },
-
-                'click .delete': function() {
-
-                    var collection = this.model.collection;
-                    this.model.destroy();
-                    collection.save();
-                    this.remove();
-                }
             },
 
-            initialize: function() {
-                this.render('deleteItem');
-            }
-        });
-
-        */
-
-
-        Libary.EditLists = Backbone.View.extend({
-
-            events: {
-
-                'change .listItem :input': function(el) {
-
-                    var $el = $(el.target);
-                    var $parent = $el.parent();
-
-                    var keyName = $el.attr('class');
-                    var listId = $parent.attr('class').split(' ')[1];
-
-                    var listModel = cLists.get(listId);
-                        listModel.set(keyName, $el.val());
-                        listModel.save();
-                },
-
-                'click .close': function() {
-                    $('#widget').remove();
-                },
-
-                'click #addListItem .addItem': function() {
-
-                    var $addListItem = this.$el.find('#addListItem');
-                    if ($addListItem.find('input').val() !== '') {
-
-                        cLists.add({
-                            name       : $addListItem.find('input').val(),
-                            description: $addListItem.find('textarea').val()
-                        });
-
-                        $addListItem.find(':input').val('');
-                        this.showLists();
-                    }
-
-                    cLists.save()
-                        .then(function() {
-                            this.showLists();
-                        }.bind(this));
-                },
-
-                'click .listItem .removeItem': function(el) {
-
-                    var $el = $(el.target);
-                    var $parent = $el.parent();
-
-                    var listId = $parent.attr('class').split(' ')[1];
-
-                    var mList = cLists.get(listId);
-                    if (mList.get('totalCount') !== 0) {
-                        alert('list not empty');
-                        return;
-                    }
-
-                    cLists.remove(listId);
-                    this.showLists();
-                }
+            prepare: function(listId) {
+                this.listId = listId;
+                var $list = Libary.current.$el.find('.list.' + this.listId);
+                this.$el.insertAfter($list);
             },
 
+            render: function(model) {
 
-            buildWidget: function() {
-
-                // remove widget if already available
-                var $widget = $('#widget');
-                if ($widget.length === 1) {
-                    $widget.remove();
-                }
-
-                // create widget
-                $widget = $('<div id="widget"></div>');
-                $widget.css('display', 'block');
-                $widget.appendTo('body');
-
-                // create widget parts
-                var $widgetOverlay = $('<div id="widgetOverlay"></div>');
-                    $widgetOverlay.appendTo($widget);
-
-                var $widgetContent = $('<div id="widgetContent" class="editLists"></div>');
-                    $widgetContent.appendTo($widget);
-            },
-
-            initialize: function() {
-                this.buildWidget();
-                this.render();
-            },
-
-            showLists: function() {
-
-                var tpl = _.template("<div class='listItem <%= id%>'>" +
-                    "<input class='name' value='<%= name %>'>" +
-                    "<textarea class='description'><%= description%></textarea>" +
-                    "<button class='removeItem'>remove</button>" +
-                "</div>");
-
-                var listItems = [];
-                cLists.each(function(listModel) {
-                    listItems.push(tpl(listModel.pick('id', 'name', 'description')));
-                });
-
-                this.$el.find('#availableLists').html(listItems.join(''));
-            },
-
-            render: function() {
+                this.itemId = model.id;
                 this.template({
-                    path   : './templates/widgets/editlists.widget.html',
+                    path   : './templates/pages/libary/libary.itemEditor.html',
+                    params : model.attributes,
                     success: function() {
-                        $('#widgetContent').html(this.$el)
-                        this.showLists();
-                    }.bind(this)
-                });
-            }
-
-        });
-
-        Libary.EditItem = Backbone.View.extend({
-
-            events: {
-
-                'click .close': function() {
-                    $('#widget').remove();
-                },
-
-                'click .delete': function() {
-                    console.log('implement me');
-                },
-
-                'change input, textarea': function(el) {
-
-                    var name  = $(el.target).attr('class');
-                    var value = $(el.target).val();
-
-                    this.model.set(name, value);
-                    this.model.save();
-                },
-
-                'change .list_data select': function(el) {
-
-                    var $option = $(el.target).find(':selected');
-                    var listId = $option.attr('id');
-                    if (!listId) {
-                        throw new Error('no listId');
-                    }
-
-                    this.model.save({
-                        'listId': [listId]
-                    });
-                }
-            },
-
-            loadUrl: function(url, saveContent) {
-
-                cItems.addAndGetData({ url: url }, { saveContent: saveContent || true })
-                    .then(function(model) {
-                        this.model = model;
-                    }.bind(this))
-                    .then(this.refresh)
-                    .then(cItems.save)
-                    .catch(function(err) {
-                        console.log(err);
-                    });
-            },
-
-            refresh: function() {
-
-                if (!this.model) {
-                    throw new Error('no model given');
-                }
-
-                this.buildWidget();
-                this.render();
-            },
-
-            initialize: function() {
-                _.bindAll(this, 'loadUrl', 'refresh', 'buildWidget', 'render');
-            },
-
-            buildWidget: function() {
-
-                // remove widget if already available
-                var $widget = $('#widget');
-                if ($widget.length === 1) {
-                    $widget.remove();
-                }
-
-                // create widget
-                $widget = $('<div id="widget"></div>');
-                $widget.css('display', 'block');
-                $widget.appendTo('body');
-
-                // create widget parts
-                var $widgetOverlay = $('<div id="widgetOverlay"></div>');
-                    $widgetOverlay.appendTo($widget);
-
-                var $widgetContent = $('<div id="widgetContent" class="editItem"></div>');
-                    $widgetContent.appendTo($widget);
-            },
-
-            render: function() {
-
-                this.template({
-                    path  : './templates/widgets/edititem.widget.html',
-                    params: {
-                        lists     : cLists.toJSON(),
-                        attributes: _.extend(this.model.toJSON(), {
-                            'faviconUrl': getFaviconUrl(this.model)
-                        })
-                    },
-                    success: function() {
-                        $('#widgetContent').html(this.$el)
+                        this.$el.removeClass('hidden');
                     }.bind(this)
                 });
             }
         });
 
-        Libary.DeleteItem = Backbone.View.extend({
+        ItemEditor.openEditorByItemModel = function(model) {
 
-            events: {
+            var listId = model.get('listId')[0];
 
-                'click .close': function() {
-                    $('#widget').remove();
-                },
-
-                'click .delete': function() {
-
-                    var collection = this.model.collection;
-                    this.model.destroy();
-                    collection.save();
-                    $('#widget').remove();
+            if (ItemEditor.current) {
+                if (ItemEditor.current.listId !== listId) {
+                    ItemEditor.current.remove();
+                    ItemEditor.current = null;
                 }
-            },
-
-            buildWidget: function() {
-
-                // remove widget if already available
-                var $widget = $('#widget');
-                if ($widget.length === 1) {
-                    $widget.remove();
-                }
-
-                // create widget
-                $widget = $('<div id="widget"></div>');
-                $widget.css('display', 'block');
-                $widget.appendTo('body');
-
-                // create widget parts
-                var $widgetOverlay = $('<div id="widgetOverlay"></div>');
-                    $widgetOverlay.appendTo($widget);
-
-                var $widgetContent = $('<div id="widgetContent" class="deleteItem"></div>');
-                    $widgetContent.appendTo($widget);
-            },
-
-            initialize: function() {
-                this.buildWidget();
-                this.render();
-            },
-
-            render: function() {
-                this.template({
-                    path   : './templates/widgets/deleteitem.widget.html',
-                    success: function() {
-                        $('#widgetContent').html(this.$el)
-                    }.bind(this)
-                });
             }
-        });
 
+            if (!ItemEditor.current) {
+                ItemEditor.current = new ItemEditor.View();
+                ItemEditor.current.prepare(listId);
+            }
 
+            Libary.current.$el.find('.listItem').removeClass('active');
 
+            var $list = Libary.current.$el.find('.list.' + listId);
+            var $item = $list.find('.listItem.' + model.id);
+            if ($item.length !== 0) {
+                $item.addClass('active');
+            }
 
+            var $itemEditor = ItemEditor.current;
+                $itemEditor.render(model);
+        };
 
+    //
+    // Item Search
+    //
 
-        /**
-         * Page Items
-         */
+    var Search = {};
 
-        Libary.Search = Backbone.View.extend({
+        Search.View = Backbone.View.extend({
 
-            el: '#search_results',
+            el     : '#head #search_results',
+            itemTpl: _.template(
+                '<div id="<%= id%>" class="searchItem">' +
+                    '<span class="url"><%= url%></span>' +
+                    '<span class="description"><%= description %></span>' +
+                '</div>'
+            ),
 
             events: {
 
@@ -1048,11 +911,13 @@
 
                 'click button': function() {
 
-                    var urlToAdd    = $('#actions .search').val();
-                    var saveContent = this.$el.find('.addNew input').is(':checked');
+                    var $addNewItem = this.$el.find('.add_new_item');
 
-                    var editItemWidget = new Libary.EditItem();
-                        editItemWidget.loadUrl(urlToAdd, saveContent);
+                    var urlToAdd    = $('#actions .search').val();
+                    var listId      = $addNewItem.find('.list select').val();
+                    var contentSave = $addNewItem.find('.content_save input').val();
+
+                    saveUrl(urlToAdd, listId, contentSave);
 
                     this.hide();
                 }
@@ -1060,66 +925,170 @@
 
             hide: function() {
                 this.$el.css('display', 'none');
-                this.$el.html('');
             },
 
-            render: function(inputString) {
+            refresh: function(searchString) {
 
-                this.$el.css('display', 'block');
+                var $addItem = this.$el.find('.add_new_item');
+                    $addItem.css('display', 'none');
 
-                var addTpl = '<div class="addNew">' +
-                    '<button>add</button>' +
-                    '<input type="checkbox" checked="true"><span>save content (image) to Dropbox</span>' +
-                    '</div>';
-
-                var searchResult = cItems.search(inputString);
-                if (searchResult.length === 0) {
-                    this.$el.html(addTpl);
-                    return;
+                var searchResults = cItems.search(searchString);
+                if (searchResults.length === 0) {
+                    $addItem.css('display', 'block');
                 }
 
-                var searchResultElements = _.map(searchResult, function(searchItem) {
-                    return '<div id="' + searchItem.get('id') + '" class="searchItem">' +
-                        '<span>' + Helper.truncate(searchItem.get('url'), 40, '..') + '</span>' +
-                        '<span class="description">' + Helper.truncate(searchItem.get('description'), 40, '..') +
-                        '</span></div>';
-                });
+                var resultFields  = _.map(searchResults,
+                    function(searchItem) {
+                        return this.itemTpl({
+                            id         : searchItem.get('id'),
+                            url        : searchItem.get('url'),
+                            description: searchItem.get('description')
+                        });
+                    }.bind(this)
+                );
 
-                this.$el.html(searchResultElements.join(''));
+                this.$el.find('.results').html(resultFields.join(''));
+                this.$el.css('display', 'block');
+            },
+
+            render: function() {
+                this.template({
+                    path   : './templates/pages/libary/libary.search.html',
+                    params : {
+                        'lists': cLists.toJSON()
+                    }
+                });
+            }
+        });
+
+    //
+    // Head
+    //
+
+    var Head = {};
+
+        Head.View = Backbone.View.extend({
+
+            el    : '#head',
+            events: {
+
+                'keyup #actions .search': function(el) {
+
+                    var searchString = $(el.target).val();
+                    if (searchString.length >= 1) {
+                        Search.current.refresh(searchString);
+                    } else {
+                        Search.current.hide();
+                    }
+                }
             }
         });
 
 
-        Libary.Item = Backbone.View.extend({
+    //
+    // Sidebar
+    //
+
+    var Sidebar = {};
+
+        Sidebar.View = Backbone.View.extend({
+
+            el: '#sidebar',
 
             events: {
 
-                'click .url': function() {
+                'click #lists .listItem': function(el) {
+
+                    var $target = $(el.target);
+
+                    var value = $target.attr('id');
+                    if (!value) {
+                        value = $target.parent().attr('id');
+                    }
+
+                    this.scrollToList(value);
+                },
+
+                'click #add_list': function() {
+
+                    cLists.add({
+                        name       : 'New List',
+                        description: null,
+                        position   : cLists.length + 1
+                    });
+                }
+            },
+
+            scrollToList: function(listId) {
+
+                var $lists = $('#libary #lists');
+                var $list = $lists.children('.list.' + listId);
+
+                if (!isElementInViewport($list[0])) {
+                    $lists.animate({
+                        scrollLeft: $list.position().left
+                    }, 500);
+                }
+
+                doBounce($list.find('.head'), 2, '10px', 200);
+            },
+
+            initialize: function() {
+                this.listenTo(cLists, 'sync', this.render);
+            },
+
+            render: function() {
+
+                var $empty_lists = this.$el.find('#empty_lists div');
+                    $empty_lists.html('');
+
+                var $list = this.$el.find('#lists');
+                    $list.html('');
+
+                cLists.each(function(listItem) {
+                    if (listItem.get('totalCount') !== 0) {
+                        $list.append(
+                            '<div id="' + listItem.get('id') + '" class="listItem">' +
+                                '<div class="listIcon"></div>' +
+                                '<span>' + listItem.get('name') + '</span>' +
+                            '</div>'
+                        );
+                    }
+                });
+            }
+        });
+
+
+    //
+    // Libary
+    //
+
+    var Libary = {};
+
+        Libary.vItem = Backbone.View.extend({
+
+            events: {
+
+                'click .url': function(el) {
+
+                    el.preventDefault();
                     var win = window.open(this.model.get('url'), '_blank');
                         win.focus();
                     return false;
                 },
 
-                'click .name': function() {
-                    var $extend = this.$el.find('.extend');
-                    var displayAction = ($extend.is(':visible')) ? 'none' : 'block';
-                    $extend.css('display', displayAction);
-                },
+                'click': function() {
 
-                'click .extend_me': function() {
-                    var $extend = this.$el.find('.extend');
-                    var displayAction = ($extend.is(':visible')) ? 'none' : 'block';
-                    $extend.css('display', displayAction);
-                },
+                    if (ItemEditor.current) {
+                        if (ItemEditor.current.itemId === this.model.id) {
+                            ItemEditor.current.remove();
+                            ItemEditor.current = null;
+                            this.$el.removeClass('active');
+                            return true;
+                        }
+                    }
 
-
-                'click .control .edit': function() {
-                    var widget = new Libary.EditItem({ model: this.model });
-                        widget.refresh();
-                },
-
-                'click .control .delete': function() {
-                    var widget = new Libary.DeleteItem({ model: this.model });
+                    ItemEditor.openEditorByItemModel(this.model);
                 }
             },
 
@@ -1139,8 +1108,7 @@
                                 $img.replaceWith($nImg);
                             });
 
-
-                            $nImg.attr('src', getImageUrl(this.model));
+                            $nImg.attr('src', getImageUrl(this.model, true));
                     }
                 }
             },
@@ -1152,6 +1120,7 @@
                 // refresh item on change
                 this.listenTo(this.model, 'sync', function() {
                     this.render();
+                    this.loadSrcByUserViewPort();
                 }.bind(this));
             },
 
@@ -1173,366 +1142,327 @@
                 var params   = _.extend({}, this.model.toJSON(), {
                     'faviconUrl'    : getFaviconUrl(this.model),
                     'dateFormated'  : Helper.timeConverter(this.model.get('created')),
-                    'name_truncated': Helper.truncate(this.model.get('name'), 100)
+                    'name_truncated': Helper.truncate(this.model.get('name'), 100),
+                    'urlCache'      : getDropboxFileApiUrl(this.model.get('urlCache'))
                 });
 
-                this.template({
-                    path   : fullPath,
-                    params : params,
-                    success: this.loadSrcByUserViewPort
-                });
+                return new Promise(function(resolve, reject) {
+                    this.template({
+                        path   : fullPath,
+                        params : params,
+                        success: function() {
+                            resolve();
+                        }
+                    });
+                }.bind(this));
             }
         });
 
-        Libary.List = Backbone.View.extend({
+        Libary.vList = Backbone.View.extend({
+
+            items: [],
 
             className: function() {
                 return 'list ' + this.model.get('id');
             },
 
+            events: {
+
+                'click .optionsItem.position .arrow_right' : function() {
+
+                    var currentPosition = this.model.get('position');
+                    if (currentPosition !== 1) {
+
+                        var previousPosition = currentPosition - 1;
+                        var previousModel = cLists.findWhere({
+                            'position': previousPosition
+                        })
+
+                        previousModel.set('position', currentPosition);
+                        this.model.set('position', previousPosition);
+                        cLists.trigger('refresh');
+
+                        this.model.save();
+                    }
+                },
+
+                'click .optionsItem.position .arrow_left': function() {
+
+                    var currentPosition = this.model.get('position');
+                    if (currentPosition !== parseInt(cLists.length, 10)) {
+
+                        var nextPosition = currentPosition + 1;
+                        var previousModel = cLists.findWhere({
+                            'position': nextPosition
+                        })
+
+                        previousModel.set('position', currentPosition);
+
+                        this.model.set('position', nextPosition);
+                        this.model.save().then(function() {
+                            cLists.trigger('refresh');
+                        })
+                    }
+                },
+
+                'click .listOptions.options_icon': function() {
+                    $(this.$el.find('.options')).slideToggle(300);
+                },
+
+                'click .options a': function(el) {
+                    el.preventDefault();
+                },
+
+                'click .options a.remove': function() {
+
+                    var listId = this.model.get('id');
+                    var items  = cItems.models.filter(function(model) {
+                        return _.indexOf(model.get('listId'), listId) !== -1;
+                    });
+
+                    if (items.length !== 0) {
+                        alert('list not empty');
+                        return true;
+                    }
+
+                    this.model.destroy();
+                },
+
+                'keyup .options :input': _.debounce(
+                    function(el) {
+
+                        var $parent = $(el.target).parent();
+
+                        var target  = $parent.attr('class').split(' ')[1];
+                        var value   = $(el.target).val();
+
+                        this.model.set(target, value);
+                        this.model.save();
+                    }, 300
+                )
+            },
+
             initialize: function() {
 
-                _.bindAll(this, 'saveTotalCount', 'checkItems');
+                this.listenTo(this.model, 'change:name', this.refreshHead);
+                this.listenTo(this.model, 'change:description', this.refreshHead);
 
-                var that = this;
-
-                    that.itemViews  = [];
-
-                    // on list change rerender
-                    that.listenTo(that.model, 'change:id', function() {
-                        that.$el.removeClass().addClass(that.className());
-                    });
-
-                    that.collection = new (Backbone.Collection.extend({
-                        comparator: function(model) {
-                            return model.get('url');
-                        }
-                    }));
-
-                    that.listenTo(that.collection, 'add', function(model) {
-                        that.addItem(model);
-                        that.saveTotalCount();
-                    });
-
-                    that.listenTo(that.collection, 'remove', function() {
-                        that.removeItem();
-                        that.saveTotalCount();
-                    });
-
-                    that.render();
+                this.render();
             },
 
-            moveItem: function(model) {
-                this.removeItem(model);
-                this.trigger('moveItem', model);
-            },
-
-            removeItem: function(model) {
-
-                if (!model) {
-                    throw new Error('no model given');
-                }
-
-                var filterResponse = _.filter(this.itemViews,
-                    function(itemView) {
-                        return itemView.model.get('id') === model.get('id');
-                    });
-
-                _.each(filterResponse, function(view) {
-                    view.remove();
-                });
+            checkItems: function() {
+                _.each(this.items, function($item) {
+                    $item.loadSrcByUserViewPort();
+                }.bind(this));
             },
 
             addItem: function(model) {
 
-                if (!model) {
-                    throw new Error('no model given');
-                }
+                var $item = new Libary.vItem({ model: model });
+                    $item.$el.prependTo(this.$el.find('.content'));
 
-                var viewItem = new Libary.Item({ model: model });
-                    viewItem.$el.prependTo(this.$el.find('.content'));
-                    viewItem.render();
+                this.items.push($item);
 
-                this.listenTo(viewItem.model, 'change:listId', this.moveItem);
-                this.itemViews.push(viewItem);
-
-                $('#libary .no_content').css('display', 'none');
-                this.$el.css('display', 'inline-block');
+                return $item.render();
             },
 
-            saveTotalCount: function() {
-                this.model.set({ 'totalCount': this.collection.length });
-                this.model.save();
+            loadItems: function() {
+
+                var $content = this.$el.find('.content');
+                    $content.css('display', 'none');
+
+                var promiseContainer = [];
+
+                this.items = [];
+
+                // append items to list
+                _.each(cItems.models, function(mItem) {
+
+                    if (!_.contains(mItem.get('listId'), this.model.get('id'))) {
+                        return true;
+                    }
+
+                    promiseContainer.push(this.addItem(mItem));
+
+                }.bind(this));
+
+                // wait until all has loaded
+                // then check if in viewport to load content
+                // to avoid unnecessary loading of images
+                Promise.all(promiseContainer)
+                    .then(function() {
+                        this.checkItems();
+                    }.bind(this))
+
+
+                $content.css('display', 'block');
             },
 
-            checkItems: function() {
-                _.each(this.itemViews, function(itemView) {
-                    itemView.loadSrcByUserViewPort();
-                });
+            refreshHead: function() {
+
+                var $head = this.$el.find('.head');
+                    $head.find('.listName').html(this.model.get('name'));
+                    $head.find('.listDescription').html(this.model.get('description'));
             },
 
             render: function() {
 
-                var that = this;
-                return new Promise(
-                    function(resolve) {
+                this.template({
+                    path   : './templates/pages/libary/libary.list.html',
+                    params : _.extend({}, this.model.toJSON(), {
+                        'position_reversed': (this.model.collection.length + 1) -this.model.get('position')
+                    }),
+                    success: function() {
 
-                        this.template({
-                            path   : './templates/pages/libary/libary.list.html',
-                            params : this.model.toJSON(),
-                            success: function() {
+                        this.loadItems();
 
-                                that.$el.find('.content').off()
-                                    .on('scroll', _.debounce(function() {
-                                        that.checkItems();
-                                    }, 100));
+                        // activate scrolling check
+                        this.$el.find('.content').off()
+                            .on('scroll', _.debounce(function() {
+                                this.checkItems();
+                            }.bind(this), 100));
 
-                                resolve();
-                            }
-                        });
-
-                    }.bind(this));
+                    }.bind(this)
+                });
             }
         });
 
-        Libary.Lists = Backbone.View.extend({
+        Libary.vLists = Backbone.View.extend({
 
             el: '#libary #lists',
 
-            unsortedId: 'unsorted',
+            lists: {},
 
             initialize: function() {
 
-                _.bindAll(this, 'addList', 'addListForUnsortedItems',
-                    'addItemToList', 'refresh', 'render', 'checkLists'
-                );
+                _.bindAll(this, 'checkLists', 'addList', 'removeList');
 
-                this.listItems = [];
+                this.listenTo(cLists, 'update', this.render);
+                this.listenTo(cLists, 'refresh', function() {
+                    this.render(true);
+                }.bind(this));
 
-                this.listenTo(cLists, 'add', this.addList);
-                this.listenTo(cItems, 'add', this.addItemToList);
+
+                this.listenTo(cItems, 'add', function(model) {
+
+                    var addedTolists = model.get('listId');
+                    _.each(addedTolists, function(listId) {
+                        this.lists[listId].addItem(model);
+                    }.bind(this));
+                }.bind(this));
+
+                this.listenTo(cItems, 'remove', function(model) {
+
+                    var removeFromLists = model.get('listId');
+                    _.each(removeFromLists, function(listId) {
+
+                        var foundItem = _.find(this.lists[listId].items, function(itemView) {
+                            return itemView.model.get('id') === model.get('id');
+                        });
+
+                        foundItem.remove();
+
+                    }.bind(this));
+
+                    ItemEditor.current.remove();
+                    ItemEditor.current = null;
+                });
 
                 this.$el.off().on('scroll', this.checkLists);
             },
 
             checkLists: _.debounce(function() {
-                _.each(this.listItems, function(listView) {
-                    listView.checkItems();
+
+                _.each(this.lists, function(list) {
+                    list.checkItems();
                 });
-            }, 100),
+            }, 500),
 
-            addList: function(model) {
 
-                var view = new Libary.List({ model: model });
-                    view.$el.appendTo(this.$el);
+            addList: function(mList) {
 
-                this.listenTo(view, 'moveItem', this.moveListItem);
+                if (!this.lists[mList.get('id')]) {
 
-                this.listItems.push(view);
-                return view.render();
-            },
+                    if (!mList.get('position')) {
+                        var keyPos = mList.collection.models.indexOf(mList);
+                        mList.set('position', parseInt(keyPos, 10) + 1);
+                        mList.save();
+                    }
 
-            moveListItem: function(model) {
+                    var vList = new Libary.vList({ model: mList });
+                        vList.$el.appendTo(this.$el);
 
-                this.addItemToList(model);
-            },
-
-            addListForUnsortedItems: function() {
-
-                // check if already added
-                var hasUnsortedItem = _.filter(this.listItems, function(listItem) {
-                    return listItem.model.get('unsorted');
-                });
-
-                if (hasUnsortedItem.length === 0) {
-                    this.addList(new Lists.Model({
-                        id         : this.unsortedId,
-                        name       : 'unsorted',
-                        description: 'unsorted list'
-                    }));
+                    this.lists[mList.get('id')] = vList;
                 }
             },
 
-            addItemToList: function(model) {
+            removeList: function(mList) {
 
-                var listId = _.first(model.get('listId'));
-                if (!listId) {
-                    listId = this.unsortedId;
+                if (this.lists[mList.get('id')]) {
+                    var $list = this.lists[mList.get('id')];
+                        $list.remove();
+
+                    delete this.lists[mList.get('id')];
                 }
-
-                var listViews = _.filter(this.listItems, function(listItem) {
-                    return listItem.model.get('id') === listId;
-                });
-
-                _.each(listViews, function(listView) {
-                    listView.collection.add(model);
-                });
             },
 
-            refresh: function() {
+            render: function(cleanReset) {
 
-                this.addListForUnsortedItems();
-                return cLists.fetch()
-                    .catch(function(err) {
-                        throw new Error(err);
-                    });
-            },
-
-            render: function() {
-
-                var promises = [];
-                if (cLists.length !== 0) {
-                    cLists.forEach(function(model) {
-                        promises.push(this.addList(model));
-                    }.bind(this));
+                if (cleanReset) {
+                    this.lists = {};
+                    cLists.sort();
+                    this.$el.html('');
                 }
 
-                return Promise.all(promises);
+                cLists.each(function(mList) {
+                    this.addList(mList);
+                }.bind(this));
             }
         });
 
+        // initialize views
+        Head.current    = new Head.View();
+        Search.current  = new Search.View();
+        Sidebar.current = new Sidebar.View();
+        Libary.current  = new Libary.vLists();
 
-        /**
-         * Libary
-         */
+        // get delta data for revision numbers
+        getDeltaData()
 
-        Libary.Head = Backbone.View.extend({
+            // refresh revision numbers
+            .then(function(deltaData) {
 
-            el    : '#head',
-            events: {
-
-                'keyup #actions .search': function(el) {
-
-                    var searchString = $(el.target).val();
-                    if (searchString.length >= 1) {
-                        this.vSearch.render(searchString);
-                    } else {
-                        this.vSearch.hide();
-                    }
-                }
-            },
-
-            initialize: function() {
-                this.vSearch = new Libary.Search();
-            }
-        });
-
-        Libary.Sidebar = Backbone.View.extend({
-
-            el    : '#sidebar',
-            events: {
-
-                'click #lists .listItem': function(el) {
-
-                    var value = $(el.target).attr('id');
-                    if (!value) {
-                        value = $(el.target).parent().attr('id');
-                    }
-
-                    this.trigger('listSelected', value);
-                },
-
-                'click #lists_actions .edit': function() {
-                    this.editListWidget = new Libary.EditLists();
-                }
-            },
-
-            initialize: function() {
-                this.listenTo(cLists, 'sync', this.render);
-            },
-
-            render: function() {
-
-                var $empty_lists = this.$el.find('#empty_lists div');
-                    $empty_lists.html('');
-
-                var $list = this.$el.find('#lists');
-                    $list.html('');
-
-                cLists.each(function(listItem) {
-                    if (listItem.get('totalCount') !== 0) {
-                        $list.append('<div id="' + listItem.get('id') + '" class="listItem">' +
-                        '<div class="listIcon"></div><span>' +
-                        listItem.get('name') + '</span></div>');
-                    }
-                });
-            }
-        });
-
-        Libary.View = Backbone.View.extend({
-
-
-            initialize: function() {
-
-                _.bindAll(this, 'refresh', 'render');
-
-
-                function doBounce(element, times, distance, speed) {
-                    for(var i = 0; i < times; i++) {
-                        element.animate({marginTop: '-='+distance}, speed)
-                            .animate({marginTop: '+='+distance}, speed);
-                    }
+                var itemsChanges = _.filter(deltaData.changes, { path: '/items' });
+                if (itemsChanges.length === 1) {
+                    cItems.revision = itemsChanges[0].stat._json.revision;
                 }
 
+                var listsChanges = _.filter(deltaData.changes, { path: '/lists' });
+                if (listsChanges.length === 1) {
+                    cLists.revision = listsChanges[0].stat._json.revision;
+                }
+            })
+            // load content
+            .then(function() {
 
-                this.vHead = new Libary.Head();
-                this.vLists = new Libary.Lists();
-                this.vSidebar = new Libary.Sidebar();
+                // get content from cache or fetch it
+                var loadClist  = cLists.cachedFetch({ silent: true });
+                var loadCItems = cItems.cachedFetch({ silent: true });
 
-
-                this.listenTo(Libary.Events, 'itemSelected', function(itemId) {
-
-                    var selectedItem = cItems.findWhere({
-                        id: itemId
-                    });
-
-                    var listId = selectedItem.get('listId')[0] || null;
-                    if (listId) {
-                        this.vSidebar.trigger('listSelected', listId);
-                    }
-                });
-
-                this.listenTo(this.vSidebar, 'listSelected', function(listId) {
-
-                    var $lists = $('#libary #lists');
-                    var $list = $lists.children('.list.' + listId);
-
-                    $lists.animate({
-                        scrollLeft: $list.position().left
-                    }, 500);
-
-                    doBounce($list, 2, '5px', 200);
-                });
-
-
-                this.refresh();
-            },
-
-
-            refreshList: function() {
-                return this.vLists.refresh()
-                    .catch(function(err) {
-                        console.log('[err] fail to load list:' + err);
-                    });
-            },
-
-
-            refresh: function() {
-
-                return this.refreshList()
+                // first list fetch silent to know when to start
+                // fetching items
+                return Promise.all([loadClist, loadCItems])
                     .then(function() {
-                        return cItems.fetch();
-                    })
-                    .catch(function(err) {
-                        console.log('[err] fail to refresh: ', err);
-                        $('#libary .no_content').css('display', 'block');
+
+                        Search.current.render();
+                        Libary.current.render();
+                        Sidebar.current.render();
                     });
+            })
+            .catch(function(err) {
+                throw new Error(err);
+            });
 
-            }
-        });
-
-
-        Libary.current = new Libary.View();
 })();
 
 },{"../modules/items.module.js":1,"../modules/lists.module.js":2,"../modules/user.module.js":3,"drbx-js-backbone":"drbx-js-backbone","helper":"helper","jquery":"jquery","underscore":"underscore"}]},{},[4])(4)
