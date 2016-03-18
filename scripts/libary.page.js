@@ -709,8 +709,6 @@
         return  drbxFilePath + fileName + drbxFilePathParams;
     }
 
-
-
     /**
      * [isElementInViewport description]
      * @param  {[type]}  el [description]
@@ -822,16 +820,45 @@
 
             activateEditMode: function() {
 
+
                 var $a = this.$el.find('a');
-                var $disabledItems = this.$el.find(':disabled');
-                if ($disabledItems.length === 0) {
-                    this.$el.find(':input').attr('disabled', true);
+                var $readonlyItems = this.$el.find('[readonly]');
+                if ($readonlyItems.length === 0) {
+                    this.$el.find(':input').attr('readonly', true);
                     $a.css('display', 'none');
                     return;
                 }
 
                 $a.css('display', 'block');
-                $disabledItems.removeAttr('disabled');
+                $readonlyItems.removeAttr('readonly');
+            },
+
+            getIFrameUrl: function(model) {
+
+                if (model.get('provider') === 'YouTube') {
+
+                    var videoKey = model.get('url').split('&');
+                        videoKey = _.find(videoKey, function(videoKeyItem) {
+                            return videoKeyItem.indexOf('v=') !== -1;
+                        });
+
+                        videoKey = videoKey.split('v=')[1];
+
+                    return 'https://www.youtube.com/embed/' + videoKey;
+                }
+
+                if (model.get('provider') === 'Vimeo') {
+
+                    var videoKey = model.get('url').split('&');
+                        videoKey = _.find(videoKey, function(videoKeyItem) {
+                            return videoKeyItem.indexOf('vimeo.com/') !== -1;
+                        });
+
+                        videoKey = videoKey.split('vimeo.com/')[1];
+
+                    return '//player.vimeo.com/video/' + videoKey;
+                }
+
             },
 
 
@@ -847,10 +874,20 @@
 
             render: function(model) {
 
+                var modelParams = _.extend({}, model.attributes);
+
+                if (model.get('type') === 'video') {
+                    modelParams.urlIframe = this.getIFrameUrl(model);
+                }
+
+                if (modelParams.urlCache) {
+                    modelParams.urlCache = getDropboxFileApiUrl(modelParams.urlCache);
+                }
+
                 this.itemId = model.id;
                 this.template({
                     path   : './templates/pages/libary/libary.itemEditor.html',
-                    params : model.attributes,
+                    params : modelParams,
                     success: function() {
                         this.$el.removeClass('hidden');
                     }.bind(this)
